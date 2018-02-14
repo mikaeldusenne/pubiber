@@ -20,6 +20,7 @@ library
                        http-client,
                        hlib,
                        bytestring,
+                       filepath,
                        text
   default-language:    Haskell2010
 
@@ -33,6 +34,9 @@ executable pubiber
                      , hlib
                      , bytestring
                      , text
+                     , directory
+                     , filepath
+                     , optparse-applicative
   default-language:    Haskell2010
 
 test-suite pubiber-test
