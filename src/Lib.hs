@@ -1,15 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib where
 
-import General -- (just_or_default,fromJust,(!∫),(?),alphaUpper)
+import Misc -- (just_or_default,fromJust,(!∫),(?),alphaUpper)
 import List
 import Tuple
 import Control.Monad(join)
 import Text.Read(readMaybe)
 import Network.HTTP.Client
+import System.Directory(doesFileExist)
 import Data.ByteString.Lazy.Char8(unpack,pack)
 import Requester
 import System.FilePath.Posix
+import ParsecArticle
+import Text.Parsec (parse)
+import Text.BibTeX.Parse
+import Text.BibTeX.Entry
+
 ---- Utils ----
 
 months = words $ "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec"
@@ -53,6 +59,19 @@ instance Read Medline where
 instance Show Medline where
   show (ML h c) = h ++ " ~> " ++ c
 
+-- data Article = Article {
+--   nickname :: String,
+--   author   :: String,
+--   title    :: String,
+--   publisher:: String,
+--   journal  :: String,
+--   date     :: String,
+--   month    :: String,
+--   year     :: String,
+--   comment  :: String,
+--   keywords :: String
+--   }
+
 ---- constants ----
 
 path = "/home/mika/Documents/random/sante_publique/cismef/article_pubmed_search_optimization/bibliographie"
@@ -72,7 +91,8 @@ elements = uncurry zip
               ("publisher","JT",  find),
               ("journal"  ,"TA",  find),
               ("date"     ,"DP",  ((>>=parseDate).).find),
-              ("month"    ,"DP",  ((>>=parseMonth).).find)
+              ("month"    ,"DP",  ((>>=parseMonth).).find),
+              ("year"    ,"DP",  ((>>=parseYear).).find)
              ]
 
 ---- Functions ----
@@ -97,6 +117,8 @@ find h = join . (safe_head<$>) . findAll h
 find' h = fromJust . (head<$>) . findAll h
 
 
+
+
 -- parseDate :: String -> Maybe String
 -- parseDate = safe_head . filter isY . words
 --   where isY s = and [i/=Nothing,
@@ -107,6 +129,12 @@ find' h = fromJust . (head<$>) . findAll h
 parseDate = safe_head . words
 
 parseMonth = (>>=safe_head) . safe_tail . words
+
+parseYear = safe_head . words
+
+
+getTitles :: String -> [String]
+getTitles s = (map (snd . head . filter ((=="title") . fst) . fields) . fromEither) $ parse file "" s
 
 -- tobibnick :: String -> [Medline] -> String
 tobibnick nick comment l = unlines
@@ -124,11 +152,23 @@ tobibnick nick comment l = unlines
                   where size=count.fst.head$elements
 
 tobib c l = (\n -> tobibnick n c l) . nomaybe . find "PMID" $ l
-             
-pubmed_fetch_id = (>>=send).build POST fetchurl
-  . RequestBodyLBS . pack . ("rettype=medline&db=pubmed&id="++)
-  where fetchurl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-    
+
+pubmed_fetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+
+pubmed_default_args :: String
+pubmed_default_args = concatWith "&" $ map (\(a, b) -> a ++ "=" ++ b) [
+          ("db", "pubmed"),
+          ("rettype", "medline")
+          ]
+
+
+pubmed_fetch_id :: String -> IO String
+pubmed_fetch_id = (>>=send).build POST pubmed_fetch_url
+  . RequestBodyLBS . pack . ( pubmed_default_args ++ ) . ("&id="++)
+
+
+-- load_id id = doesFileExist f >>= ((readBibtex <$> readFile f) `orelse` pubmed_fetch_id id) 
+--   where f = "/home/mika/.cache/pubiber" </> id
 
 request'result'to'biber :: [String] ->  [String] -> String -> [String]
 request'result'to'biber nicks comment =
@@ -138,4 +178,5 @@ request'result'to'biber nicks comment =
   . splitWhen "\n\n" -- separate each record (empty line)
 
 stripcomments = unlines.filter (not.(==Just '#').safe_head) .lines
+
 
