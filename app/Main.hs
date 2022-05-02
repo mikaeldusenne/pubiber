@@ -1,10 +1,13 @@
-{-# LANGUAGE ApplicativeDo              #-}
+{-# LANGUAGE ApplicativeDo #-}
 module Main where
 
 import System.Environment
 import Lib
 import List
-import General (orelse)
+import Misc (orelse)
+
+import Control.Monad
+import Data.Foldable (traverse_)
 
 import System.FilePath.Posix
 import System.Directory
@@ -31,9 +34,6 @@ opts = SettingsOpts
   <*> f "also" '+' ".bib file to append to output" "manual.bib"
   where f l s h v = strOption $ long l <> short s <> help h <> value v
 
-
-
-
 parseFile :: String -> IO [[String]]
 parseFile path =
   let f = map (\(ML k v) -> v)
@@ -50,8 +50,11 @@ main = do
 
   putStrLn $ show (length ids) ++ " articles to fetch."
   
-  let createNote name = writeFile (dir </> "notes" </> name <.> "org")
-  traverse (uncurry createNote) $ zip nicks comment
+  let createNote :: FilePath -> String -> IO ()
+      createNote name content = (>>= mempty `orelse` writeFile f content) . doesFileExist $ f
+        where f = (dir </> "notes" </> name <.> "org")
+        
+  doesDirectoryExist (dir </> "notes") >>= (`when` traverse_ (uncurry createNote) (zip nicks comment))
 
   let bibz = ((dropWhile (=='\n')<$>) . pubmed_fetch_id $ concatWith "," ids)
              >>= ( return . request'result'to'biber nicks comment)
